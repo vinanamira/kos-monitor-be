@@ -58,6 +58,29 @@ Buka dokumentasi API di <http://127.0.0.1:8000/docs>. Database SQLite `kosmonito
 Untuk memakai MySQL Laragon: `pip install pymysql`, buat database `kosmonitor`, lalu set
 `DATABASE_URL=mysql+pymysql://root:@127.0.0.1:3306/kosmonitor` di `.env`.
 
+## Self-hosting di laptop Windows (otomatis nyala saat login)
+
+Backend berjalan di latar belakang tanpa jendela terminal, otomatis start setiap login Windows,
+dan dijalankan ulang bila crash. Pemakaian sumber daya kecil (± 70 MB RAM, CPU < 1%).
+
+Pasang sekali (PowerShell, di folder project):
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File autostart.ps1
+```
+
+| Perlu apa | Perintah (PowerShell) |
+|-----------|----------------------|
+| Cek status | `Get-ScheduledTask "KosMonitor Backend"` |
+| Hentikan sementara | `Stop-ScheduledTask "KosMonitor Backend"` |
+| Jalankan lagi | `Start-ScheduledTask "KosMonitor Backend"` |
+| Hapus auto-start | `powershell -ExecutionPolicy Bypass -File autostart.ps1 -Remove` |
+| Lihat log | `Get-Content logs\backend.log -Tail 30 -Wait` |
+
+Setelah `git pull` (kode berubah), jalankan *Hentikan* lalu *Jalankan lagi* agar kode baru dipakai.
+Backend hanya aktif selama laptop menyala dan terhubung internet.
+
 ## Jalankan di Google Colab (tanpa kartu kredit)
 
 Backend bisa jalan di runtime Colab yang sama dengan dashboard. Tambahkan sel ini sebelum sel MQTT dashboard:
