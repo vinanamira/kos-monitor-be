@@ -7,14 +7,14 @@ menyimpan yang valid, lalu meneruskannya. Data yang tidak valid ditolak dan dica
 ```
                  kosdemo/icha-kos/telemetry                     kosdemo/icha-kos/validated/telemetry
 ESP32 (Wokwi) ───────────────────────────────► BACKEND ─────────────────────────────────────────────► Dashboard
-                 kosdemo/icha-kos/led{n}/state  │  ▲  validasi 6 lapisan      .../validated/led{n}/state  (Colab)
+                 kosdemo/icha-kos/led{n}/state  │  ▲  validasi 6 lapisan      .../validated/led{n}/state
                                                 │  │  simpan ke DB             .../validated/rejected
                                                 │  │
 ESP32 ◄──── kosdemo/icha-kos/led{n}/cmd ────────┘  └──── kosdemo/icha-kos/request/led{n}/cmd ◄──────── Dashboard
 ```
 
-Integrasi lewat MQTT dipilih karena dashboard berjalan di Google Colab (server Google), yang
-tidak bisa mengakses `localhost` laptop. Dashboard cukup mengganti nama topic yang di-subscribe.
+Dashboard apa pun (website, aplikasi, dsb.) bisa mengambil data yang sudah divalidasi lewat topic MQTT
+`validated/...` atau lewat REST API. Lihat [Menyambungkan dashboard](#menyambungkan-dashboard).
 
 ## Lapisan validasi telemetry
 
@@ -81,27 +81,6 @@ powershell -ExecutionPolicy Bypass -File autostart.ps1
 Setelah `git pull` (kode berubah), jalankan *Hentikan* lalu *Jalankan lagi* agar kode baru dipakai.
 Backend hanya aktif selama laptop menyala dan terhubung internet.
 
-## Jalankan di Google Colab (tanpa kartu kredit)
-
-Backend bisa jalan di runtime Colab yang sama dengan dashboard. Tambahkan sel ini sebelum sel MQTT dashboard:
-
-```python
-import os, sys, subprocess, threading, time, requests
-BACKEND_DIR, BACKEND_PORT = "/content/kos-monitor-be", 8000
-subprocess.run(["git", "clone", "-q", "--depth", "1", "https://github.com/vinanamira/kos-monitor-be", BACKEND_DIR])
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", f"{BACKEND_DIR}/requirements.txt"])
-os.environ["DATABASE_URL"] = f"sqlite:///{BACKEND_DIR}/kosmonitor.db"
-sys.path.insert(0, BACKEND_DIR)
-import uvicorn
-from app.main import app as backend_app
-threading.Thread(target=lambda: uvicorn.run(backend_app, host="0.0.0.0", port=BACKEND_PORT), daemon=True).start()
-time.sleep(5)
-from google.colab import output
-output.serve_kernel_port_as_window(BACKEND_PORT, path="/docs")
-```
-
-Backend hidup selama runtime Colab aktif dan selalu memakai kode terbaru dari GitHub.
-
 ## Deploy ke Render (gratis)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vinanamira/kos-monitor-be)
@@ -123,40 +102,20 @@ Catatan paket free Render:
 keduanya meneruskan data yang sama, sehingga dashboard menerima setiap data dua kali. Untuk mencoba backend lokal
 saat versi Render menyala, pakai `TOPIC_PREFIX` lain di `.env` lokal.
 
-## Perubahan di dashboard (Colab)
+## Menyambungkan dashboard
 
-Di sel konfigurasi MQTT, ganti `TOPICS` supaya dashboard membaca data yang **sudah divalidasi**:
+**Lewat MQTT** (broker sama dengan ESP32). Dashboard subscribe/publish ke topic berikut, bukan ke topic mentah ESP32:
 
-```python
-TOPICS = {
-    "telemetry":  "kosdemo/icha-kos/validated/telemetry",    # sebelumnya: kosdemo/icha-kos/telemetry
-    "led1_cmd":   "kosdemo/icha-kos/request/led1/cmd",       # perintah ikut divalidasi backend
-    "led2_cmd":   "kosdemo/icha-kos/request/led2/cmd",
-    "led1_state": "kosdemo/icha-kos/validated/led1/state",
-    "led2_state": "kosdemo/icha-kos/validated/led2/state",
-    "rejected":   "kosdemo/icha-kos/validated/rejected",     # opsional: alasan penolakan
-}
-```
+| Arah | Topic | Isi |
+|------|-------|-----|
+| backend → dashboard | `kosdemo/icha-kos/validated/telemetry` | JSON telemetry dari ESP32 + `id`, `status` (`valid`/`warning`), `warnings`, `received_at`, `source` |
+| backend → dashboard | `kosdemo/icha-kos/validated/led{n}/state` | `ON` / `OFF` (retained) |
+| backend → dashboard | `kosdemo/icha-kos/validated/rejected` | JSON data yang ditolak: `topic`, `errors` (alasan), `raw` |
+| dashboard → backend | `kosdemo/icha-kos/request/led{n}/cmd` | `ON` / `OFF`; divalidasi lalu diteruskan ke ESP32 |
 
-Payload di topic `validated/telemetry` berisi field yang sama seperti dari ESP32, ditambah
-`id`, `status` (`valid`/`warning`), `warnings`, `received_at`, dan `source`. Kode `on_message`
-yang lama tetap jalan tanpa diubah.
-
-Opsional, supaya alasan penolakan muncul di panel *Diagnostik*:
-
-```python
-# di on_connect, tambahkan ke daftar subscribe:
-(TOPICS["rejected"], 0),
-
-# di awal on_message, setelah `payload = ...`:
-if topic == TOPICS["rejected"]:
-    info = json.loads(payload)
-    alasan = "; ".join(info.get("errors", []))
-    with data_lock:
-        data["error"] = f"Data ditolak backend: {alasan}"
-    add_log(f"Backend menolak data dari {info.get('topic')}: {alasan}")
-    return
-```
+**Lewat REST API** (bila dashboard bisa menjangkau backend, mis. website di laptop yang sama):
+`GET http://localhost:8000/api/telemetry/latest` untuk data terbaru, `GET /api/lamps` untuk status lampu,
+`POST /api/lamps/{n}/command` dengan `{"action": "ON"}` untuk kontrol lampu. CORS sudah diizinkan.
 
 ## Endpoint API
 
