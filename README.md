@@ -58,6 +58,27 @@ Buka dokumentasi API di <http://127.0.0.1:8000/docs>. Database SQLite `kosmonito
 Untuk memakai MySQL Laragon: `pip install pymysql`, buat database `kosmonitor`, lalu set
 `DATABASE_URL=mysql+pymysql://root:@127.0.0.1:3306/kosmonitor` di `.env`.
 
+## Jalankan di Google Colab (tanpa kartu kredit)
+
+Backend bisa jalan di runtime Colab yang sama dengan dashboard. Tambahkan sel ini sebelum sel MQTT dashboard:
+
+```python
+import os, sys, subprocess, threading, time, requests
+BACKEND_DIR, BACKEND_PORT = "/content/kos-monitor-be", 8000
+subprocess.run(["git", "clone", "-q", "--depth", "1", "https://github.com/vinanamira/kos-monitor-be", BACKEND_DIR])
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", f"{BACKEND_DIR}/requirements.txt"])
+os.environ["DATABASE_URL"] = f"sqlite:///{BACKEND_DIR}/kosmonitor.db"
+sys.path.insert(0, BACKEND_DIR)
+import uvicorn
+from app.main import app as backend_app
+threading.Thread(target=lambda: uvicorn.run(backend_app, host="0.0.0.0", port=BACKEND_PORT), daemon=True).start()
+time.sleep(5)
+from google.colab import output
+output.serve_kernel_port_as_window(BACKEND_PORT, path="/docs")
+```
+
+Backend hidup selama runtime Colab aktif dan selalu memakai kode terbaru dari GitHub.
+
 ## Deploy ke Render (gratis)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vinanamira/kos-monitor-be)
